@@ -1,8 +1,6 @@
 """
 client_encode_encrypt_db.py - Encrypt the database
 """
-import numpy as np
-import torch
 import zipfile
 from lattica_query.serialization.api_serialization_utils import dumps_proto_tensor
 import pickle
@@ -15,7 +13,6 @@ local_file_paths, _ = submission_utils.init(sys.argv)
 
 # Read data from local filesystem required for encoding and encrypting
 context = pickle.load(open(local_file_paths.PATH_CONTEXT, "rb"))
-hom_seq = pickle.load(open(local_file_paths.PATH_HOM_SEQ, "rb"))
 sk =      pickle.load(open(local_file_paths.PATH_SK,      "rb"))
 
 # Load the db and payloads from step 2
