@@ -62,7 +62,7 @@ public:
         static const int recDims[] = { 128,   128,     256,      512};
         static const int dbSizes[] = {1000, 50000, 1000000, 20000000};
 
-        ringDim = (_size == InstanceSize::TOY)? 1024 : 65536;
+        ringDim = 65536;
         recordDim = recDims[int(_size)];
         dbSize    = dbSizes[int(_size)];
 

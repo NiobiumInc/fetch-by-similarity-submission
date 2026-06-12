@@ -1,0 +1,82 @@
+# How this workload was integrated with the Niobium compiler
+
+This note documents what was changed in **this repository** to run the
+Fetch-by-Similarity encrypted computation on the **Niobium** compiler/backend
+(via the [niobium-client](submission/niobium-client) SDK), and what you need to
+know to work with it. It is written for someone new to Niobium — it focuses on
+the integration *steps and changes*, not on Niobium's internals.
+
+## What the integration gives you
+
+Niobium **records** the server-side encrypted computation once as a portable
+trace, then **replays** that trace — either locally (for debugging) or on the
+Niobium backend (for an optimized/accelerated run). You keep the normal OpenFHE
+implementation of the workload; Niobium wraps the part you want it to execute.
+
+Because the trace captures the computation *graph* (not the data), a recorded
+trace can be **replayed with new keys and new inputs** without re-recording, as
+long as the crypto parameters (ring dimension, modulus chain) are unchanged.
+
+## The pieces that changed (and why)
+
+| File | Change |
+|------|--------|
+| `submission/src/server_encrypted_compute.cpp` | The one file with real integration code. Adds the explicit Niobium record/replay lifecycle around the existing FHE computation, all behind `#ifdef NIOBIUM_COMPILER`. Read its comments for the step-by-step. |
+| `submission/CMakeLists.txt` | Compiles `server_encrypted_compute` with `-DNIOBIUM_COMPILER`, against the Niobium-instrumented OpenFHE (`OPENFHE_CPROBES`), linking `libnbfhetch` + the auto-facade library. |
+| `harness/run_submission.py` | Adds `--target` (default `local`) and forwards it to the compute step; sets the replay environment (`NBCC_FHETCH_DRIVER` for local, `NBCC_FHETCH_REPLAY`/`NBCC_FHETCH_SERVER` for a backend target) + the OpenFHE library path. |
+| `scripts/start_fhetch_server.py` | Standalone helper to start the replay **server** for a non-local target, wired to an external compiler checkout. (Temporary — meant to move into the compiler repo later.) |
+| `submission/niobium-client` | The Niobium client SDK (git submodule). The integration uses its cooperative auto-tagging mode. |
+| `submission/include/params.h`, `submission/src/client_key_generation.cpp` | The `TOY` size now uses the full ring dimension (`ringDim = 65536`) with `HEStd_128_classic` security, the same crypto parameters as all other sizes — instead of its previous reduced ring (`ringDim = 1024`, no security). This keeps recorded traces parameter-compatible across sizes while still using toy-scale data (1000 records, 128-dim) for quick checks. |
+
+## The integration pattern (in `server_encrypted_compute.cpp`)
+
+The important steps, in order:
+
+1. **`init(argc, argv)` then `enable_auto_tagging()`** — first thing in `main`,
+   *before* the crypto context is loaded. `init` consumes Niobium flags
+   (`--target`); `enable_auto_tagging` lets Niobium capture the crypto context,
+   keys, and input ciphertexts automatically as your code deserializes them.
+2. **`cache_parameters({...})` + `set_program_info(...)`** — identify the
+   computation (here: instance size + count/full mode) so its trace is keyed and
+   reused. Must be set before the crypto context loads.
+3. **Load** the crypto context, keys, and query the normal OpenFHE way — Niobium
+   auto-tags them (and remembers their file paths).
+4. **Gate the computation on `is_cache_valid()`:**
+   - **record** (no trace yet): `start()` → run the real FHE computation →
+     `probe("result", out)` → `stop()`.
+   - **replay** (trace exists): run **no** FHE ops — `replay()` (refreshes any
+     changed input/key files and runs the trace on the target) → `result(cc, "result", out)`.
+5. **Serialize `out`** — identical whether produced by the record run or
+   reconstructed on replay.
+
+Rules worth remembering: cache parameters before the context load; **all FHE ops
+inside the `is_cache_valid()` gate** (replay runs zero ops); same crypto
+parameters across record and replay (new key/data values are fine).
+
+## Running it
+
+```bash
+# Local (default): replays via the in-tree fhetch_driver simulator.
+python harness/run_submission.py 0 --target local
+
+# Backend target: ships the trace to the Niobium compiler. Start a server first
+# (see scripts/start_fhetch_server.py) and select the target.
+python harness/run_submission.py 0 --target <backend>
+```
+
+- **`--target local` is for debugging only — it is intentionally slow and
+  unoptimized** (a software FHETCH simulator running on your machine). Use it to
+  validate correctness, then switch the target to run on the Niobium backend; the
+  workload code does not change.
+- **Record once, replay with new keys:** the first run records the trace; later
+  runs with regenerated keys/data replay it (Niobium refreshes the changed inputs
+  automatically). Keep the recorded trace directory between runs; delete it to
+  force a fresh record after changing the computation or crypto parameters.
+
+## Build dependency
+
+`scripts/build_task.sh` / the harness build first builds the niobium-client
+submodule (its instrumented OpenFHE + `libnbfhetch` + auto-facade), then builds
+this workload against it. A backend (`--target`) run additionally needs a
+reachable Niobium compiler (`nbcc_fhetch_replay`); `start_fhetch_server.py`
+wires one up.

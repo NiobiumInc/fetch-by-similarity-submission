@@ -69,12 +69,7 @@ KeyPair<DCRTPoly> key_gen(const InstanceParams& prms, bool count_only)
   cParams.SetSecretKeyDist(UNIFORM_TERNARY);
   cParams.SetKeySwitchTechnique(HYBRID);
   cParams.SetMultiplicativeDepth(23);
-  if (prms.getSize()==InstanceSize::TOY) {
-    cParams.SetSecurityLevel(HEStd_NotSet);
-    cParams.SetRingDim(1 << 10);
-  } else {
-    cParams.SetSecurityLevel(HEStd_128_classic);
-  }
+  cParams.SetSecurityLevel(HEStd_128_classic);
   cParams.SetScalingTechnique(FLEXIBLEAUTO);
   cParams.SetScalingModSize(42);
   cParams.SetFirstModSize(57);

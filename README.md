@@ -47,7 +47,7 @@ This reference repository contains two implementations, one local and one remote
 ## Running the fetch-by-similarity workload
 #### Dependencies
 - Python 3.12+
-- The build environment for local execution depends on OpenFHE being installed as specificied in `scripts/get_openfhe.sh` and `submission/CMakeLists.txt`. See https://github.com/openfheorg/openfhe-development#installation.
+- The build environment for local execution depends on OpenFHE, which is built from the copy bundled inside `submission/niobium-client/vendor/niobium-fhetch/vendor/openfhe` by the niobium-client Makefile. See https://github.com/openfheorg/openfhe-development#installation.
 - The build environment for remote-backend execution depends on lattica-query being installed as specified in `submission_remote/requirements.txt`. See https://platformdocs.lattica.ai/how-to-guides/client-installation/how-to-install-query-client. Should be installed on a `linux_x86_64` machine.
 
 #### Execution
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 python3 harness/run_submission.py -h  # Information about command-line options
 ```
 
-The harness script `harness/run_submission.py` will attempt to build the submission itself, if it is not already built. If already built, it will use the same built code without re-building it, unless the code has changed. (By default the reference code will also build the OpenFHE library in a subdirectory, you can comment out some line in the file `./scripts/get_openfhe.sh` if you want to use system-level openfhe instead.)
+The harness script `harness/run_submission.py` will attempt to build the submission itself, if it is not already built. If already built, it will use the same built code without re-building it, unless the code has changed. The build runs `make release` in `submission/niobium-client`, which builds the bundled OpenFHE, the fhetch library, and the client, and then compiles the submission against that OpenFHE install.
 
 An example run is provided below.
 
@@ -85,7 +85,6 @@ options:
   --remote             Run example submission in remote backend mode
 $
 (virtualenv) $ python ./harness/run_submission.py 0 --seed 12345 --num_runs 3
-[get_openfhe] Found OpenFHE installed at /usr/local/lib/ (use --force to rebuild).
 -- FOUND PACKAGE OpenFHE
 -- OpenFHE Version: 1.3.0
 -- OpenFHE installed as shared libraries: ON
