@@ -12,14 +12,20 @@
 # ------------------------------------------------------------
 set -euo pipefail
 ROOT="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
-TASK_DIR="$1"
+TASK_DIR="$( cd -- "$1" &> /dev/null && pwd )"
+OPENFHE_PREFIX_RAW="${2:-$ROOT/third_party/openfhe}"
+OPENFHE_PREFIX="$( cd -- "$OPENFHE_PREFIX_RAW" &> /dev/null && pwd )"
 BUILD="$TASK_DIR/build"
 
-# By default, we assume the OpenFHE library is installed at the the local 
-# directory /third_party/openfhe (the default location in get_openfhe.sh).
-# If you want to use a different location, set the CMAKE_PREFIX_PATH variable
-# accordingly.
+# OpenFHE install prefix can be passed as the second argument. Defaults to
+# $ROOT/third_party/openfhe.
+#
+# We pin OpenFHE_DIR explicitly and disable the user package registry so
+# that stale OpenFHE entries under ~/.cmake/packages/OpenFHE can't hijack
+# find_package(OpenFHE).
 cmake -S "$TASK_DIR" -B "$BUILD" \
-      -DCMAKE_PREFIX_PATH="$ROOT/third_party/openfhe"
+      -DCMAKE_PREFIX_PATH="$OPENFHE_PREFIX" \
+      -DOpenFHE_DIR="$OPENFHE_PREFIX/lib/OpenFHE" \
+      -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
 cd "$TASK_DIR/build"
 make -j

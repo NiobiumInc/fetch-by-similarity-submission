@@ -8,8 +8,10 @@ run_submission.py - run the entire submission process, from build to verify
 # This software is licensed under the terms of the Apache v2 License.
 # See the LICENSE.md file for details.
 import sys
+import os
 import argparse
 import subprocess
+from pathlib import Path
 import numpy as np
 import utils
 from params import InstanceParams, TOY, LARGE, instance_name
@@ -30,6 +32,15 @@ def main():
                         help='Only count # of matches, do not return payloads')
     parser.add_argument('--remote', action='store_true',
                         help='Run example submission in remote backend mode')
+    parser.add_argument('--target', default='local',
+                        help='Replay target for server_encrypted_compute (cooperative mode). '
+                             '"local" (default) replays via the in-tree fhetch_driver; any other '
+                             'value (e.g. FUNC_SIM_HW) ships the recorded trace to a running '
+                             'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL).')
+    parser.add_argument('--opt-level', dest='opt_level', default=None,
+                        help='Optimization level (O0..O3) for the compiler-side replay. '
+                             'Forwarded to server_encrypted_compute and on to the replay '
+                             'server. Omitted means O0 (the conservative default).')
 
     args, _ = parser.parse_known_args()
     size = args.size
@@ -49,6 +60,30 @@ def main():
     # the submission code is either in submission or submission_remote
     harness_dir = params.rootdir/"harness"
     exec_dir = params.rootdir/ ("submission_remote/src" if remote_be else "submission")
+
+    # Cooperative record/replay env for server_encrypted_compute (Niobium).
+    # The binary owns the explicit lifecycle; its replay() dispatches a disk
+    # replay — local via the in-tree fhetch_driver (NBCC_FHETCH_DRIVER), or for
+    # a non-local --target via the transport forwarder (NBCC_FHETCH_REPLAY) to a
+    # running server (NBCC_FHETCH_SERVER, default http://127.0.0.1:9443).
+    if not remote_be:
+        client_dir = params.rootdir / "submission" / "niobium-client"
+        openfhe_lib = client_dir / "vendor" / "lib" / "openfhe" / "lib"
+        env_file = client_dir / "build" / "niobium_client.env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("OPENFHE_LIB="):
+                    openfhe_lib = Path(line.split("=", 1)[1].strip())
+        for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+            prev = os.environ.get(var)
+            os.environ[var] = os.pathsep.join([str(openfhe_lib)] + ([prev] if prev else []))
+        if args.target == "local":
+            os.environ["NBCC_FHETCH_DRIVER"] = str(
+                client_dir / "vendor" / "niobium-fhetch" / "build" / "tests"
+                / "fhetch_driver" / "fhetch_driver")
+        else:
+            os.environ["NBCC_FHETCH_REPLAY"] = str(
+                client_dir / "build" / "src" / "fhetch_transport" / "nbcc_fhetch_replay")
 
     print(f"\n[harness] Running submission for {instance_name(size,args.count_only)} dataset")
     if args.count_only:
@@ -145,8 +180,14 @@ def main():
         utils.log_step(8, "Query encryption")
         utils.log_size(io_dir / "ciphertexts_upload" / "query.bin" , "Encrypted query")
 
-        # 9. Server-side: run server_encrypted_compute
-        utils.run_exe_or_python(exec_dir, "server_encrypted_compute", *this_query_args)
+        # 9. Server-side: run server_encrypted_compute. --target selects the
+        #    cooperative replay path (the binary's init() consumes it).
+        compute_args = list(this_query_args)
+        if not remote_be:
+            compute_args += ["--target", args.target]
+            if args.opt_level:
+                compute_args += ["--opt-level", args.opt_level]
+        utils.run_exe_or_python(exec_dir, "server_encrypted_compute", *compute_args)
         utils.log_step(9, "Encrypted computation")
         utils.log_size(io_dir / "ciphertexts_download" / "results.bin" , "Encrypted results")
 

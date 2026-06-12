@@ -6,6 +6,25 @@
 // This software is licensed under the terms of the Apache License v2.
 // See the file LICENSE.md for details.
 //============================================================================
+//
+// Niobium integration (see ../../NIOBIUM_INTEGRATION.md for the overview).
+//
+// This is the one workload file with Niobium integration code. The FHE
+// computation below is plain OpenFHE and is unchanged; everything Niobium-
+// specific is guarded by `#ifdef NIOBIUM_COMPILER` so the file still builds and
+// runs as a normal OpenFHE program without it.
+//
+// When built with NIOBIUM_COMPILER, main() drives Niobium's record/replay
+// lifecycle: it initializes the compiler, enables cooperative auto-tagging (so
+// the crypto context, keys, and input ciphertexts are captured automatically as
+// they are deserialized), and gates the FHE computation on is_cache_valid():
+//   - first run (no trace): RECORD — run the real computation, probe the
+//     output, finalize the trace;
+//   - later runs (trace exists): REPLAY — run NO FHE ops; replay the trace on
+//     the --target backend (or the local simulator) and reconstruct the output.
+// The result ciphertext is then serialized the same way in both cases. Search
+// for "NIOBIUM_COMPILER" below to see each step in context.
+//============================================================================
 #include <cassert>
 
 #include "openfhe.h"
@@ -18,6 +37,10 @@
 #include "utils.h"
 #include "slot_replication.h"
 #include "running_sums.h"
+
+#ifdef NIOBIUM_COMPILER
+#include "niobium/compiler.h"
+#endif
 
 using namespace lbcrypto;
 
@@ -113,6 +136,25 @@ int main(int argc, char* argv[]) {
   auto start_server = std::chrono::system_clock::now();
   std::filesystem::create_directories(prms.downdir());
 
+#ifdef NIOBIUM_COMPILER
+  // Explicit cooperative record/replay lifecycle. init() consumes
+  // any niobium flags (e.g. --target); enable_auto_tagging() opts into
+  // Mode::COOPERATIVE so the auto-facade tags inputs/keys (with their source
+  // paths) via the OpenFHE deserialize hooks, while THIS program owns the
+  // record/replay decisions. Must run before the crypto context is loaded.
+  niobium::compiler().init(argc, argv);
+  niobium::compiler().enable_auto_tagging();
+  {
+    niobium::Compiler::CacheParameters params;
+    params.push_back({"wl", argv[1]});
+    params.push_back({"mode", count_only ? "count" : "full"});
+    niobium::compiler().cache_parameters(params);
+  }
+  niobium::compiler().set_program_info(
+      "server_encrypted_compute", "1.0", "fetch-by-similarity encrypted compute");
+  niobium::compiler().set_build_info(__FILE__, __LINE__, __TIMESTAMP__);
+#endif
+
   // Read the crypto context and the public key from disk
   CryptoContext<DCRTPoly> cc;
   if (!Serial::DeserializeFromFile(prms.keydir()/"cc.bin", cc, SerType::BINARY)) {
@@ -153,6 +195,19 @@ int main(int argc, char* argv[]) {
 
   auto start_computing = std::chrono::system_clock::now();
 
+  // On record it is produced by the computation below; on a replay
+  // it is reconstructed from the cached trace via result().
+  Ciphertext<DCRTPoly> out;
+#ifdef NIOBIUM_COMPILER
+  const bool replaying = niobium::compiler().is_cache_valid();
+#else
+  const bool replaying = false;
+#endif
+
+  if (!replaying) {
+#ifdef NIOBIUM_COMPILER
+    niobium::compiler().start();  // begin recording the FHETCH trace
+#endif
   // Matrix-vector multiplication, reading the encrypted matrix one
   // ciphertexe at a time from updir
   auto result = mat_vec_mult(prms.updir(), eqry, prms);
@@ -185,19 +240,8 @@ int main(int argc, char* argv[]) {
 #ifdef DEBUG
     printCts({result[0]}, " summed match vector:");
 #endif
-    auto now = std::chrono::system_clock::now();
-    int64_t comp_s = std::chrono::duration_cast<std::chrono::seconds>(
-      now - start_computing).count();
-    int64_t total_s = std::chrono::duration_cast<std::chrono::seconds>(
-      now - start_server).count();
-    store_server_time(timing_fname, comp_s, total_s);
-
-    std::string out_fname = prms.downdir()/"results.bin";
-    if (!Serial::SerializeToFile(out_fname, result[0], SerType::BINARY)) {
-      throw std::runtime_error("Failed to write ciphertext to " + out_fname);
-    }
-    return 0;
-  }
+    out = result[0];
+  } else {
 
   // Make a deep copy of the matches, it will be multiplied back into the
   // result after the running-sum procedure
@@ -337,6 +381,26 @@ int main(int argc, char* argv[]) {
     }
   }
   log_step(4, "Output compression");
+    out = accumulator;
+    }  // end else (full payload path)
+#ifdef NIOBIUM_COMPILER
+    niobium::compiler().probe("result", out);
+    niobium::compiler().stop();  // finalize the trace
+#endif
+  }  // end if (!replaying)
+#ifdef NIOBIUM_COMPILER
+  else {
+    // Rreplay: don't run openfhe compution but 
+    // dispatche the replay (local fhetch_driver / remote compiler);
+    // result() reconstructs the output ciphertext.
+    if (!niobium::compiler().replay()) {
+      throw std::runtime_error("niobium replay failed");
+    }
+    if (!niobium::compiler().result(cc, "result", out) || !out) {
+      throw std::runtime_error("niobium result reconstruction failed");
+    }
+  }
+#endif
 
   // Report the server-side overall computation time
   auto now = std::chrono::system_clock::now();
@@ -346,9 +410,9 @@ int main(int argc, char* argv[]) {
     now - start_server).count();
   store_server_time(timing_fname, comp_s, total_s);
 
-  // Store the accumulated result back to disk
+  // Store the result back to disk
   std::string out_fname = prms.downdir()/"results.bin";
-  if (!Serial::SerializeToFile(out_fname, accumulator, SerType::BINARY)) {
+  if (!Serial::SerializeToFile(out_fname, out, SerType::BINARY)) {
     throw std::runtime_error("Failed to write ciphertext to " + out_fname);
   }
   return 0;

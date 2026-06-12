@@ -43,10 +43,16 @@ def build_submission(script_dir: Path, remote_be: bool):
     if remote_be:
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", "./submission_remote/requirements.txt"], check=True)
     else:
-        # Clone and build OpenFHE if needed
-        subprocess.run([script_dir/"get_openfhe.sh"], check=True)
-        # CMake build of the submission itself
-        subprocess.run([script_dir/"build_task.sh", "./submission"], check=True)
+        # Build the niobium-client submodule, which builds its bundled
+        # OpenFHE (under vendor/lib/openfhe), the fhetch library, and
+        # the client examples. We use this OpenFHE for the submission
+        # build instead of scripts/get_openfhe.sh.
+        client_dir = script_dir.parent / "submission" / "niobium-client"
+        subprocess.run(["make", "-C", str(client_dir), "release"], check=True)
+        # CMake build of the submission itself, pointed at the OpenFHE
+        # that niobium-client just installed.
+        openfhe_prefix = client_dir / "vendor" / "lib" / "openfhe"
+        subprocess.run([script_dir/"build_task.sh", "./submission", str(openfhe_prefix)], check=True)
 
 
 class TextFormat:
