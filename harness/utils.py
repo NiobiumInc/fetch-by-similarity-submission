@@ -52,6 +52,21 @@ def build_submission(script_dir: Path, remote_be: bool):
         # CMake build of the submission itself, pointed at the OpenFHE
         # that niobium-client just installed.
         openfhe_prefix = client_dir / "vendor" / "lib" / "openfhe"
+        # Build the standalone fhetch_driver that "--target local" replay
+        # dispatches to (NBCC_FHETCH_DRIVER in run_submission.py). The
+        # niobium-client "release" build only produces libnbfhetch/fhetch_sim,
+        # not the driver test binary, so configure + build it here against the
+        # OpenFHE install niobium-client just produced (EXTERNAL_OPENFHE=1 so
+        # we don't recompile OpenFHE).
+        fhetch_dir = client_dir / "vendor" / "niobium-fhetch"
+        fhetch_env = {**os.environ,
+                      "OPENFHE_INSTALL_DIR": str(openfhe_prefix),
+                      "EXTERNAL_OPENFHE": "1"}
+        subprocess.run(["make", "-C", str(fhetch_dir), "config-fhetch-release"],
+                       check=True, env=fhetch_env)
+        subprocess.run(["cmake", "--build", str(fhetch_dir / "build"),
+                        "-j", str(os.cpu_count() or 1),
+                        "--target", "fhetch_driver"], check=True)
         subprocess.run([script_dir/"build_task.sh", "./submission", str(openfhe_prefix)], check=True)
 
 
