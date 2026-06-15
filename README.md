@@ -65,6 +65,26 @@ pip install -r requirements.txt
 python3 harness/run_submission.py -h  # Information about command-line options
 ```
 
+#### Submodules
+
+This repository pulls in `submission/niobium-client` as a git submodule. The
+submodule is configured to use HTTPS, so it can be cloned anonymously without a
+GitHub account or SSH key. Be sure to fetch it when cloning:
+
+```console
+git clone --recurse-submodules https://github.com/NiobiumInc/fetch-by-similarity-submission.git
+# or, if you already cloned without submodules:
+git submodule update --init --recursive
+```
+
+If you prefer SSH (for example, because you push to these repositories), there is
+no need to edit `.gitmodules`. Instead, tell git once to rewrite GitHub HTTPS
+URLs to SSH for all your repositories:
+
+```console
+git config --global url."git@github.com:".insteadOf "https://github.com/"
+```
+
 The harness script `harness/run_submission.py` will attempt to build the submission itself, if it is not already built. If already built, it will use the same built code without re-building it, unless the code has changed. The build runs `make release` in `submission/niobium-client`, which builds the bundled OpenFHE, the fhetch library, and the client, and then compiles the submission against that OpenFHE install.
 
 An example run is provided below.

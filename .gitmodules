@@ -1,3 +1,3 @@
 [submodule "submission/niobium-client"]
 	path = submission/niobium-client
-	url = git@github.com:NiobiumInc/niobium-client.git
+	url = https://github.com/NiobiumInc/niobium-client.git
