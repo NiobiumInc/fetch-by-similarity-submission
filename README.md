@@ -45,6 +45,8 @@ This execution mode is enabled by passing the `--remote` flag to the harness, an
 This reference repository contains two implementations, one local and one remote, serving as examples of how to use them. Note that closed-source software submissions can use either mode: They can use shims under `submission_remote/` that call a back-end server running the main implementation, or use shims under `submission/` that call a pre-compiled library or a container. That library/container must be included with the submission (e.g. using Github packages).
 
 ## Running the fetch-by-similarity workload
+See also [Running it](https://github.com/NiobiumInc/fetch-by-similarity-submission/blob/main/NIOBIUM_INTEGRATION.md#running-it) in the Niobium integration guide.
+
 #### Dependencies
 - Python 3.12+
 - The build environment for local execution depends on OpenFHE, which is built from the copy bundled inside `submission/niobium-client/vendor/niobium-fhetch/vendor/openfhe` by the niobium-client Makefile. See https://github.com/openfheorg/openfhe-development#installation.
