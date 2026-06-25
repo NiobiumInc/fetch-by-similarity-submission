@@ -37,10 +37,10 @@ def main():
                              '"local" (default) replays via the in-tree fhetch_driver; any other '
                              'value (e.g. FUNC_SIM_HW) ships the recorded trace to a running '
                              'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL).')
-    parser.add_argument('--opt-level', dest='opt_level', default=None,
+    parser.add_argument('--opt-level', dest='opt_level', default='O3',
                         help='Optimization level (O0..O3) for the compiler-side replay. '
                              'Forwarded to server_encrypted_compute and on to the replay '
-                             'server. Omitted means O0 (the conservative default).')
+                             'server. Omitted means O3 for maximum performance.')
 
     args, _ = parser.parse_known_args()
     size = args.size
