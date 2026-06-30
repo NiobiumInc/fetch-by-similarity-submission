@@ -144,6 +144,10 @@ int main(int argc, char* argv[]) {
   // record/replay decisions. Must run before the crypto context is loaded.
   niobium::compiler().init(argc, argv);
   niobium::compiler().enable_auto_tagging();
+  // Stream tagged input/key data to disk at tag time instead of buffering all
+  // captured input values in RAM until stop(). Safe here: replay happens in a
+  // separate process (cooperative/transport) that reads the .bin from disk.
+  niobium::compiler().enable_input_streaming();
   {
     niobium::Compiler::CacheParameters params;
     params.push_back({"wl", argv[1]});
