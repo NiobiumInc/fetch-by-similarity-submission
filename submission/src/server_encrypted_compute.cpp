@@ -17,13 +17,16 @@
 // When built with NIOBIUM_COMPILER, main() drives Niobium's record/replay
 // lifecycle: it initializes the compiler, enables cooperative auto-tagging (so
 // the crypto context, keys, and input ciphertexts are captured automatically as
-// they are deserialized), and gates the FHE computation on is_cache_valid():
-//   - first run (no trace): RECORD — run the real computation, probe the
-//     output, finalize the trace;
-//   - later runs (trace exists): REPLAY — run NO FHE ops; replay the trace on
-//     the --target backend (or the local simulator) and reconstruct the output.
-// The result ciphertext is then serialized the same way in both cases. Search
-// for "NIOBIUM_COMPILER" below to see each step in context.
+// they are deserialized), and gates only the RECORDING on is_cache_valid():
+//   - cache miss (no trace): RECORD the trace in hollow mode (the FHE math is
+//     skipped for speed/memory, so the value left in the output is NOT valid),
+//     then finalize the trace;
+//   - cache hit (trace exists): skip recording entirely (run NO FHE ops).
+// In BOTH cases it then REPLAYS the trace on the --target backend (or the local
+// simulator) and reconstructs the output — replay is the only path that yields
+// a correct result, since hollow recording does no real math. The result
+// ciphertext is then serialized the same way. Search for "NIOBIUM_COMPILER"
+// below to see each step in context.
 //============================================================================
 #include <cassert>
 
@@ -199,8 +202,10 @@ int main(int argc, char* argv[]) {
 
   auto start_computing = std::chrono::system_clock::now();
 
-  // On record it is produced by the computation below; on a replay
-  // it is reconstructed from the cached trace via result().
+  // `out` is always reconstructed from the trace via replay()+result() below.
+  // On a cache miss the computation below also records the trace in hollow
+  // mode, so the value it leaves in `out` is incorrect and is overwritten by
+  // the replay; on a cache hit the computation is skipped entirely.
   Ciphertext<DCRTPoly> out;
 #ifdef NIOBIUM_COMPILER
   const bool replaying = niobium::compiler().is_cache_valid();
@@ -210,7 +215,8 @@ int main(int argc, char* argv[]) {
 
   if (!replaying) {
 #ifdef NIOBIUM_COMPILER
-    niobium::compiler().start();  // begin recording the FHETCH trace
+    niobium::compiler().start();                    // begin recording the FHETCH trace
+    niobium::compiler().enable_hollow_mode(true);   // skip expensive FHE math while recording
 #endif
   // Matrix-vector multiplication, reading the encrypted matrix one
   // ciphertexe at a time from updir
@@ -388,21 +394,21 @@ int main(int argc, char* argv[]) {
     out = accumulator;
     }  // end else (full payload path)
 #ifdef NIOBIUM_COMPILER
+    niobium::compiler().enable_hollow_mode(false);  // must be OFF for probe/stop
     niobium::compiler().probe("result", out);
     niobium::compiler().stop();  // finalize the trace
 #endif
   }  // end if (!replaying)
 #ifdef NIOBIUM_COMPILER
-  else {
-    // Rreplay: don't run openfhe compution but 
-    // dispatche the replay (local fhetch_driver / remote compiler);
-    // result() reconstructs the output ciphertext.
-    if (!niobium::compiler().replay()) {
-      throw std::runtime_error("niobium replay failed");
-    }
-    if (!niobium::compiler().result(cc, "result", out) || !out) {
-      throw std::runtime_error("niobium result reconstruction failed");
-    }
+  // Always replay to obtain the correct result: hollow-mode recording skips the
+  // real FHE math (so the recorded `out` is incorrect), and the cache-hit path
+  // ran no FHE at all. replay() dispatches to the --target backend (local
+  // fhetch_driver / remote compiler); result() reconstructs the output.
+  if (!niobium::compiler().replay()) {
+    throw std::runtime_error("niobium replay failed");
+  }
+  if (!niobium::compiler().result(cc, "result", out) || !out) {
+    throw std::runtime_error("niobium result reconstruction failed");
   }
 #endif
 

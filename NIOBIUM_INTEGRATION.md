@@ -17,6 +17,13 @@ Because the trace captures the computation *graph* (not the data), a recorded
 trace can be **replayed with new keys and new inputs** without re-recording, as
 long as the crypto parameters (ring dimension, modulus chain) are unchanged.
 
+Recording uses **hollow mode**: it captures the instruction trace while skipping
+the expensive polynomial math, which keeps the recording run cheap on time and
+memory. The trade-off is that a recording run does not itself produce a usable
+result, so every run — including the first — finishes by replaying the trace to
+get the answer. This makes the first (recording) run a **cold start** that costs
+more than steady-state replays; see [Running it](#running-it).
+
 ## The pieces that changed (and why)
 
 | File | Change |
@@ -41,17 +48,23 @@ The important steps, in order:
    reused. Must be set before the crypto context loads.
 3. **Load** the crypto context, keys, and query the normal OpenFHE way — Niobium
    auto-tags them (and remembers their file paths).
-4. **Gate the computation on `is_cache_valid()`:**
-   - **record** (no trace yet): `start()` → run the real FHE computation →
-     `probe("result", out)` → `stop()`.
-   - **replay** (trace exists): run **no** FHE ops — `replay()` (refreshes any
-     changed input/key files and runs the trace on the target) → `result(cc, "result", out)`.
-5. **Serialize `out`** — identical whether produced by the record run or
-   reconstructed on replay.
+4. **Gate only the *recording* on `is_cache_valid()`, then always replay:**
+   - **record** (no trace yet): `start()` → `enable_hollow_mode(true)` → run the
+     FHE computation in **hollow mode** (the heavy polynomial math is skipped, so
+     recording is fast and low-memory, but the value it leaves in `out` is **not**
+     a valid result) → `enable_hollow_mode(false)` → `probe("result", out)` →
+     `stop()`.
+   - **cache hit** (trace exists): skip recording entirely — run **no** FHE ops.
+   - **then, in both cases:** `replay()` (refreshes any changed input/key files
+     and runs the trace on the target) → `result(cc, "result", out)`. Replay is
+     the only path that yields a correct result — a hollow record computes nothing
+     usable, and a cache hit runs no FHE at all.
+5. **Serialize `out`** — always the ciphertext reconstructed by `replay()`/`result()`.
 
 Rules worth remembering: cache parameters before the context load; **all FHE ops
-inside the `is_cache_valid()` gate** (replay runs zero ops); same crypto
-parameters across record and replay (new key/data values are fine).
+inside the recording gate** (a cache hit runs zero ops); hollow mode must be
+**off** for `probe()`/`stop()`; same crypto parameters across record and replay
+(new key/data values are fine).
 
 ## Running it
 
@@ -68,10 +81,17 @@ python harness/run_submission.py 0 --target <backend>
   unoptimized** (a software FHETCH simulator running on your machine). Use it to
   validate correctness, then switch the target to run on the Niobium backend; the
   workload code does not change.
-- **Record once, replay with new keys:** the first run records the trace; later
-  runs with regenerated keys/data replay it (Niobium refreshes the changed inputs
-  automatically). Keep the recorded trace directory between runs; delete it to
-  force a fresh record after changing the computation or crypto parameters.
+- **Cold start: the first run costs more.** On a cache miss the first run does
+  **both** — it records the trace (in hollow mode: cheap on math and memory, but
+  it still builds and writes the full instruction trace) **and then** replays that
+  trace to produce the result. Later runs hit the cache and **only replay**
+  (Niobium refreshes the changed keys/inputs automatically). So expect the first
+  run after a fresh record — or after changing the computation or crypto
+  parameters, which forces a re-record — to be noticeably slower than the
+  steady-state replays that follow.
+- **Record once, replay with new keys:** keep the recorded trace directory
+  between runs; delete it to force a fresh record (and thus another cold start)
+  after changing the computation or crypto parameters.
 
 ## Build dependency
 
