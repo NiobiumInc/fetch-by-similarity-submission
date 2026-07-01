@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanity-local:
+    # Baseline sanity check — safe on GitHub-hosted runners, including PRs
+    # from forks, since it never touches the proprietary compiler. Builds the
+    # vendored niobium-client submodule + this workload, then runs the full
+    # 10-stage FHE pipeline (TOY size) twice with the same seed: run 1
+    # RECORDS the trace via plain OpenFHE, run 2 REPLAYS it through the
+    # in-tree, open-source fhetch_driver simulator ("--target local", the
+    # documented debugging/correctness path — see NIOBIUM_INTEGRATION.md).
+    # Compiler-backed replay against the real SDK is covered separately by
+    # compiler-tests.yml, on the GCP self-hosted runners.
+    name: Sanity (TOY, local replay)
+    runs-on: ubuntu-latest
+
+    env:
+      CC: ccache gcc
+      CXX: ccache g++
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          df -h
+
+      - name: Install build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ccache ninja-build
+          python3 -m pip install --user --quiet -r requirements.txt
+          ccache --version
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ubuntu-latest-ccache-release-${{ hashFiles('submission/niobium-client/Makefile', 'submission/CMakeLists.txt', 'submission/src/**') }}
+          restore-keys: |
+            ubuntu-latest-ccache-release-
+
+      - name: Prime ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --max-size=2G
+          ccache --zero-stats
+
+      # Mirrors harness/utils.py's build_submission(): builds niobium-client
+      # (vendored OpenFHE + libnbfhetch + client), the fhetch_driver replay
+      # helper, then this workload's binaries against that OpenFHE install.
+      # Done as an explicit step (rather than letting run_submission.py do it
+      # lazily) so build output is easy to scan on a break; the harness's own
+      # build_submission() call below becomes a fast no-op re-run of `make`.
+      - name: Build niobium-client + fhetch_driver + submission
+        run: |
+          OPENFHE_PREFIX="$GITHUB_WORKSPACE/submission/niobium-client/vendor/lib/openfhe"
+          make -C submission/niobium-client release
+          make -C submission/niobium-client/vendor/niobium-fhetch config-fhetch-release \
+            OPENFHE_INSTALL_DIR="$OPENFHE_PREFIX" EXTERNAL_OPENFHE=1
+          cmake --build submission/niobium-client/vendor/niobium-fhetch/build \
+            -j"$(nproc)" --target fhetch_driver
+          scripts/build_task.sh ./submission "$OPENFHE_PREFIX"
+
+      - name: Run submission — record (TOY, --target local)
+        run: python3 harness/run_submission.py 0 --seed 12345 --target local
+
+      - name: Run submission — replay via fhetch_driver (TOY, new keys, cache hit)
+        run: python3 harness/run_submission.py 0 --seed 12345 --target local
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanity-local-logs-${{ github.run_attempt }}
+          path: |
+            submission/build/CMakeFiles/CMakeOutput.log
+            submission/build/CMakeFiles/CMakeError.log
+            submission/niobium-client/build/CMakeFiles/CMakeOutput.log
+            submission/niobium-client/build/CMakeFiles/CMakeError.log
+            io/toy/
+            datasets/toy/
+          if-no-files-found: ignore
+          retention-days: 7

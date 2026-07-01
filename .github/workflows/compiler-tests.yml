@@ -1,0 +1,146 @@
+# .github/workflows/compiler-tests.yml
+#
+# Public-repo compiler sanity check. Runs on the ephemeral GCP self-hosted
+# runner group (gcp-ephemeral) so the on-prem Niobium cluster is never
+# exposed to public-repo PRs. Mirrors niobium-client's own
+# compiler-tests.yml; see https://github.com/NiobiumInc/gcp-github-runners
+# (workflow-snippets/README.md) for onboarding + operational details, and
+# this repo's NIOBIUM_INTEGRATION.md for the record/replay integration.
+#
+# ===========================================================================
+# HARD REQUIREMENT: NO nbcc / compiler output in the public Actions log.
+# Public repos => Actions logs AND artifacts are world-readable, with no
+# per-job privacy toggle. The transport server and the replay run both send
+# stdout+stderr to /dev/null; this workflow surfaces ONLY the exit status
+# (PASS / FAIL). Do NOT: echo compiler output, `set -x` around it, upload
+# trace/io/dataset artifacts, or print the SDK version. (RECORD is exempt —
+# niobium::compiler().replay() is only invoked on a cache HIT, so the record
+# run never touches the compiler; its output is plain OpenFHE and safe.)
+# ===========================================================================
+#
+# Never use pull_request_target with a checkout of the PR head.
+
+name: compiler-tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Least privilege: the job only needs to read the repo for checkout.
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler-tests:
+    name: Compiler tests (self-hosted, GCP)
+    runs-on: [self-hosted, Linux, X64, gcp-ephemeral]
+    timeout-minutes: 60   # OpenFHE cold-build ~15 min + FBS record/replay round trip
+    env:
+      SDK: /mnt/niobium-sdk/sdk   # mounted RO at boot by runner-startup.sh
+      PORT: "9443"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+
+      - name: Verify SDK is mounted (no version printed)
+        run: |
+          test -x "$SDK/bin/nbcc_fhetch_replay" || { echo "::error::SDK not mounted"; exit 1; }
+
+      - name: Install build tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build
+          python3 -m pip install --user --quiet -r requirements.txt
+
+      - name: Build niobium-client + fhetch_driver + submission (release)
+        # Public C++/OpenFHE output — OK to show; useful for diagnosing build breaks.
+        run: |
+          OPENFHE_PREFIX="$GITHUB_WORKSPACE/submission/niobium-client/vendor/lib/openfhe"
+          make -C submission/niobium-client release
+          make -C submission/niobium-client/vendor/niobium-fhetch config-fhetch-release \
+            OPENFHE_INSTALL_DIR="$OPENFHE_PREFIX" EXTERNAL_OPENFHE=1
+          cmake --build submission/niobium-client/vendor/niobium-fhetch/build \
+            -j"$(nproc)" --target fhetch_driver
+          scripts/build_task.sh ./submission "$OPENFHE_PREFIX"
+
+      - name: Map the SDK into the layout the transport server expects
+        run: |
+          # The server daemon --execs $NIOBIUM_COMPILER_ROOT/build/nbcc_fhetch_replay.
+          # The SDK ships bin/ + lib/; bridge with a shim of symlinks (same
+          # pattern as niobium-client's own compiler-tests.yml).
+          SHIM="$RUNNER_TEMP/nbcc-root"
+          mkdir -p "$SHIM/build"
+          ln -sf "$SDK"/bin/* "$SHIM/build/"
+          ln -sf "$SDK"/lib/* "$SHIM/build/"
+          test -x "$SHIM/build/nbcc_fhetch_replay" || { echo "::error::SDK missing nbcc_fhetch_replay"; exit 1; }
+          echo "NIOBIUM_COMPILER_ROOT=$SHIM" >> "$GITHUB_ENV"
+
+      # RECORD never calls niobium::compiler().replay() (only a cache HIT
+      # does), so this run is plain OpenFHE — no compiler involved, safe to
+      # show output. --opt-level O1: O2+ enables CSE, which is not yet
+      # correctness-preserving for the re-recorded replay (see
+      # niobium-compiler's ci-release-full.yml FBS round-trip step).
+      - name: Run submission — record (TOY, --target FUNC_SIM_HW)
+        run: python3 harness/run_submission.py 0 --seed 12345 --target FUNC_SIM_HW --opt-level O1
+
+      - name: Start the transport server (background, output suppressed)
+        run: |
+          set +x
+          CLIENT_ROOT="$GITHUB_WORKSPACE/submission/niobium-client"
+          SERVER_BIN="$CLIENT_ROOT/build/src/fhetch_transport/nbcc_fhetch_replay_server"
+          COMPILER_BIN="$NIOBIUM_COMPILER_ROOT/build/nbcc_fhetch_replay"
+          test -x "$SERVER_BIN" || { echo "::error::server binary not built: $SERVER_BIN"; exit 1; }
+
+          ENV_FILE="$CLIENT_ROOT/build/niobium_client.env"
+          [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+          : "${OPENFHE_LIB:=$CLIENT_ROOT/vendor/lib/openfhe/lib}"
+
+          LD_LIBRARY_PATH="$OPENFHE_LIB:$NIOBIUM_COMPILER_ROOT/build" \
+            "$SERVER_BIN" --port "$PORT" --bind 127.0.0.1 --exec "$COMPILER_BIN" \
+            >/dev/null 2>&1 &
+          echo $! > "$RUNNER_TEMP/fhetch_server.pid"
+
+          # Wait for /healthz — no busy-wait, poll on a short sleep.
+          ready=0
+          for i in $(seq 1 50); do
+            if curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            kill -0 "$(cat "$RUNNER_TEMP/fhetch_server.pid")" 2>/dev/null || { echo "::error::server exited before healthz"; exit 1; }
+            sleep 0.2
+          done
+          [ "$ready" = "1" ] || { echo "::error::server did not become healthy"; exit 1; }
+
+      - name: Run submission — replay over transport (PASS/FAIL only, compiler output suppressed)
+        run: |
+          set +x
+          export NBCC_FHETCH_SERVER="http://127.0.0.1:$PORT"
+          rc=0
+          python3 harness/run_submission.py 0 --seed 12345 --target FUNC_SIM_HW --opt-level O1 >/dev/null 2>&1 || rc=1
+          if [ $rc -eq 0 ]; then
+            echo "compiler E2E: PASS"
+          else
+            echo "::error::compiler E2E FAILED (output suppressed by policy; reproduce locally)"
+          fi
+          exit $rc
+
+      - name: Stop the transport server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/fhetch_server.pid" ]; then
+            pid="$(cat "$RUNNER_TEMP/fhetch_server.pid")"
+            kill -TERM "$pid" 2>/dev/null || true
+            for i in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+          fi
