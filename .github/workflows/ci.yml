@@ -34,7 +34,7 @@ jobs:
     # needs maintainer approval for first-time/outside contributors before
     # anything in it executes (see compiler-tests.yml for the same note).
     name: Sanity (TOY, local replay)
-    runs-on: [self-hosted, Linux, X64, gcp-ephemeral, n2-highmem-8]
+    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-8]
 
     env:
       CC: ccache gcc
