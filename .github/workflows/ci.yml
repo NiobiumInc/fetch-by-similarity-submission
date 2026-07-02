@@ -14,17 +14,27 @@ concurrency:
 
 jobs:
   sanity-local:
-    # Baseline sanity check — safe on GitHub-hosted runners, including PRs
-    # from forks, since it never touches the proprietary compiler. Builds the
+    # Baseline sanity check — never touches the proprietary compiler, only
+    # the open-source niobium-client + fhetch_driver simulator. Builds the
     # vendored niobium-client submodule + this workload, then runs the full
     # 10-stage FHE pipeline (TOY size) twice with the same seed: run 1
     # RECORDS the trace via plain OpenFHE, run 2 REPLAYS it through the
     # in-tree, open-source fhetch_driver simulator ("--target local", the
     # documented debugging/correctness path — see NIOBIUM_INTEGRATION.md).
     # Compiler-backed replay against the real SDK is covered separately by
-    # compiler-tests.yml, on the GCP self-hosted runners.
+    # compiler-tests.yml, also on gcp-ephemeral.
+    #
+    # Runs on gcp-ephemeral (n2-highmem-8, 64GB) rather than ubuntu-latest
+    # (7GB): even at TOY size this workload's keys/database are multi-GB
+    # (see NIOBIUM_INTEGRATION.md — TOY intentionally uses the full ring
+    # dimension so traces stay parameter-compatible across sizes), and the
+    # record+replay round trip was getting OOM-killed on the standard
+    # GitHub-hosted runner. NOTE: this moves the fork-PR approval gate onto
+    # this check too — a self-hosted job in a workflow means the whole run
+    # needs maintainer approval for first-time/outside contributors before
+    # anything in it executes (see compiler-tests.yml for the same note).
     name: Sanity (TOY, local replay)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, gcp-ephemeral, n2-highmem-8]
 
     env:
       CC: ccache gcc
@@ -38,30 +48,23 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo apt-get clean
-          df -h
-
       - name: Install build tooling
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
+          # python3-numpy via apt: this runner has no pip, and numpy isn't
+          # actually preinstalled on the image (verified — don't assume it is).
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ccache ninja-build
-          python3 -m pip install --user --quiet -r requirements.txt
+            build-essential cmake ccache ninja-build python3-numpy
+          python3 -c "import numpy" || { echo "::error::numpy still not importable after apt install"; exit 1; }
           ccache --version
 
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ubuntu-latest-ccache-release-${{ hashFiles('submission/niobium-client/Makefile', 'submission/CMakeLists.txt', 'submission/src/**') }}
+          key: gcp-ephemeral-ccache-release-${{ hashFiles('submission/niobium-client/Makefile', 'submission/CMakeLists.txt', 'submission/src/**') }}
           restore-keys: |
-            ubuntu-latest-ccache-release-
+            gcp-ephemeral-ccache-release-
 
       - name: Prime ccache
         run: |
