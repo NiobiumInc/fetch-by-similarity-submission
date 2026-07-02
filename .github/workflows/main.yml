@@ -1,0 +1,11 @@
+name: Test Ephemeral Runner
+
+on:
+  push:
+
+jobs:
+  test-job:
+    runs-on: [self-hosted, gcp-ephemeral]
+    steps:
+      - name: Hello World
+        run: echo "The ephemeral runner works!"
