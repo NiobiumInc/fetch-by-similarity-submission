@@ -25,8 +25,11 @@ name: compiler-tests
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+  # PROVISIONAL: unrestricted push trigger so this fires on every push to the
+  # working branch while it's being iterated on pre-PR (also needed once, so
+  # GitHub "discovers" the workflow and workflow_dispatch stops 404ing).
+  # Narrow back to `branches: [main]` once the PR is open.
+  push: {}
   workflow_dispatch: {}
 
 # Least privilege: the job only needs to read the repo for checkout.
