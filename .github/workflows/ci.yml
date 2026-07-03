@@ -17,22 +17,27 @@ jobs:
     # Baseline sanity check — never touches the proprietary compiler, only
     # the open-source niobium-client + fhetch_driver simulator. Builds the
     # vendored niobium-client submodule + this workload, then runs the full
-    # 10-stage FHE pipeline (TOY size) twice with the same seed: run 1
-    # RECORDS the trace via plain OpenFHE, run 2 REPLAYS it through the
-    # in-tree, open-source fhetch_driver simulator ("--target local", the
-    # documented debugging/correctness path — see NIOBIUM_INTEGRATION.md).
+    # 10-stage FHE pipeline (TOY size) once with --target local: since
+    # "Enable hollow-mode recording + always-replay in FBS server compute"
+    # (fetch-by-similarity-submission#11), server_encrypted_compute always
+    # calls replay() unconditionally — a cache miss records the trace in
+    # hollow mode (fast, no real FHE math) and a cache hit skips recording
+    # entirely, but either way replay() runs right after and is what
+    # produces the correct, verified result. One invocation now exercises
+    # both the (hollow) record path and the fhetch_driver replay path; a
+    # second invocation would just repeat the same replay redundantly.
     # Compiler-backed replay against the real SDK is covered separately by
     # compiler-tests.yml, also on gcp-ephemeral.
     #
     # Runs on gcp-ephemeral (n2-highmem-8, 64GB) rather than ubuntu-latest
     # (7GB): even at TOY size this workload's keys/database are multi-GB
     # (see NIOBIUM_INTEGRATION.md — TOY intentionally uses the full ring
-    # dimension so traces stay parameter-compatible across sizes), and the
-    # record+replay round trip was getting OOM-killed on the standard
-    # GitHub-hosted runner. NOTE: this moves the fork-PR approval gate onto
-    # this check too — a self-hosted job in a workflow means the whole run
-    # needs maintainer approval for first-time/outside contributors before
-    # anything in it executes (see compiler-tests.yml for the same note).
+    # dimension so traces stay parameter-compatible across sizes), and this
+    # was getting OOM-killed on the standard GitHub-hosted runner. NOTE:
+    # this moves the fork-PR approval gate onto this check too — a
+    # self-hosted job in a workflow means the whole run needs maintainer
+    # approval for first-time/outside contributors before anything in it
+    # executes (see compiler-tests.yml for the same note).
     name: Sanity (TOY, local replay)
     runs-on: [self-hosted, gcp-ephemeral, n2-highmem-8]
 
@@ -88,10 +93,7 @@ jobs:
             -j"$(nproc)" --target fhetch_driver
           scripts/build_task.sh ./submission "$OPENFHE_PREFIX"
 
-      - name: Run submission — record (TOY, --target local)
-        run: python3 harness/run_submission.py 0 --seed 12345 --target local
-
-      - name: Run submission — replay via fhetch_driver (TOY, new keys, cache hit)
+      - name: Run submission — record (hollow) + replay via fhetch_driver (TOY, --target local)
         run: python3 harness/run_submission.py 0 --seed 12345 --target local
 
       - name: ccache stats
