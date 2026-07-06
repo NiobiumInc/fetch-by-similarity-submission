@@ -43,7 +43,11 @@ concurrency:
 jobs:
   compiler-tests:
     name: Compiler tests (self-hosted, GCP)
-    runs-on: [self-hosted, gcp-ephemeral]
+    # n2-highmem-48 (384GB): fhetch_driver's replay of this TOY-size FBS
+    # trace peaks at ~311GB RSS (measured locally, uncapped). See ci.yml
+    # for the full writeup — this is a stopgap for a known upstream memory
+    # issue in the replay path, not a CI config problem.
+    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-48]
     timeout-minutes: 60   # OpenFHE cold-build ~15 min + FBS record/replay round trip
     env:
       SDK: /mnt/niobium-sdk/sdk   # mounted RO at boot by runner-startup.sh
