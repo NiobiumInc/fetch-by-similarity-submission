@@ -29,17 +29,21 @@ jobs:
     # Compiler-backed replay against the real SDK is covered separately by
     # compiler-tests.yml, also on gcp-ephemeral.
     #
-    # Runs on gcp-ephemeral (n2-highmem-8, 64GB) rather than ubuntu-latest
-    # (7GB): even at TOY size this workload's keys/database are multi-GB
-    # (see NIOBIUM_INTEGRATION.md — TOY intentionally uses the full ring
-    # dimension so traces stay parameter-compatible across sizes), and this
-    # was getting OOM-killed on the standard GitHub-hosted runner. NOTE:
-    # this moves the fork-PR approval gate onto this check too — a
+    # Runs on gcp-ephemeral n2-highmem-48 (384GB). Measured locally
+    # (/usr/bin/time -v, uncapped): fhetch_driver's replay of this TOY-size
+    # trace (2.19M instructions, ring dim 65536) peaks at ~311GB RSS and
+    # takes ~15 minutes — confirmed OOM-killed (exit 137) on 32GB
+    # (gcp-ephemeral default), 64GB (n2-highmem-8), and even the 7GB
+    # GitHub-hosted ubuntu-latest runner this job originally used. This is
+    # a known upstream memory issue in fhetch_driver's replay path, not
+    # something fixable via CI config — n2-highmem-48 is a stopgap so the
+    # check can pass at all while that gets fixed; reassess once it is.
+    # NOTE: this moves the fork-PR approval gate onto this check too — a
     # self-hosted job in a workflow means the whole run needs maintainer
     # approval for first-time/outside contributors before anything in it
     # executes (see compiler-tests.yml for the same note).
     name: Sanity (TOY, local replay)
-    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-8]
+    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-48]
 
     env:
       CC: ccache gcc
