@@ -43,10 +43,19 @@ concurrency:
 jobs:
   compiler-tests:
     name: Compiler tests (self-hosted, GCP)
-    # n2-highmem-48 (384GB): fhetch_driver's replay of this TOY-size FBS
-    # trace peaks at ~311GB RSS (measured locally, uncapped). See ci.yml
-    # for the full writeup — this is a stopgap for a known upstream memory
-    # issue in the replay path, not a CI config problem.
+    # This is now the ONLY sanity check for FBS (the former ci.yml's
+    # --target local / fhetch_driver check was removed — per Robert,
+    # FUNC_SIM_HW is the correct/supported target for FBS, not local
+    # fhetch_driver replay; local was also the source of a ~311GB RSS
+    # upstream memory bug, unrelated to this target).
+    #
+    # Still on n2-highmem-48 (384GB) for now, left over from the fhetch_driver
+    # sizing — NOT yet right-sized for FUNC_SIM_HW specifically. The device
+    # spec (niobium-compiler/devices/func_sim_hw/spec.yaml) declares
+    # `max_memory_gb: 32` for this target, which would suggest something like
+    # n2-highmem-8 (64GB) is plenty, but we haven't measured this workflow's
+    # actual peak RSS yet — see the memory monitor step below. Downsize once
+    # we have a real number; don't guess from the spec alone.
     runs-on: [self-hosted, gcp-ephemeral, n2-highmem-48]
     timeout-minutes: 60   # OpenFHE cold-build ~15 min + FBS record/replay round trip
     env:
@@ -130,6 +139,15 @@ jobs:
           done
           [ "$ready" = "1" ] || { echo "::error::server did not become healthy"; exit 1; }
 
+      # DIAGNOSTIC: measuring actual peak RAM for FUNC_SIM_HW specifically
+      # (distinct from fhetch_driver's ~311GB local-replay issue) before we
+      # decide on a runner size. Sample free -h every second in the
+      # background around the harness call.
+      - name: Start memory monitor (background)
+        run: |
+          ( while true; do date -u +"%H:%M:%S"; free -h; echo "---"; sleep 1; done > "$RUNNER_TEMP/memlog.txt" ) &
+          echo $! > "$RUNNER_TEMP/memmon.pid"
+
       # --opt-level O1: O2+ enables CSE, which is not yet correctness-preserving
       # for the re-recorded replay (see niobium-compiler's ci-release-full.yml
       # FBS round-trip step). Output suppressed: replay() always dispatches
@@ -146,6 +164,14 @@ jobs:
             echo "::error::compiler E2E FAILED (output suppressed by policy; reproduce locally)"
           fi
           exit $rc
+
+      - name: Stop memory monitor and show log
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/memmon.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/memmon.pid")" 2>/dev/null || true
+          fi
+          tail -200 "$RUNNER_TEMP/memlog.txt" || true
 
       - name: Stop the transport server
         if: always()
