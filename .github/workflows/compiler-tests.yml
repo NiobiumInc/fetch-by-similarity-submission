@@ -108,6 +108,10 @@ jobs:
           ln -sf "$SDK"/lib/* "$SHIM/build/"
           test -x "$SHIM/build/nbcc_fhetch_replay" || { echo "::error::SDK missing nbcc_fhetch_replay"; exit 1; }
           echo "NIOBIUM_COMPILER_ROOT=$SHIM" >> "$GITHUB_ENV"
+          # The compiler (run server-side by the transport) needs the SDK device
+          # specs for a non-trivial --target like FHE_SIM; without this it aborts
+          # with "Cannot find devices directory".
+          echo "NIOBIUM_SPEC_DIR=$SDK/share/niobium/devices" >> "$GITHUB_ENV"
 
       # Since "Enable hollow-mode recording + always-replay in FBS server
       # compute" (fetch-by-similarity-submission#11), server_encrypted_compute
@@ -128,7 +132,14 @@ jobs:
           [ -f "$ENV_FILE" ] && . "$ENV_FILE"
           : "${OPENFHE_LIB:=$CLIENT_ROOT/vendor/lib/openfhe/lib}"
 
+          # PATH must include the compiler root's build/ dir: the compiler's
+          # "secondary replay" step execs a small `replay` helper binary by
+          # bare name, not by full path. The SDK ships it at bin/replay (the
+          # shim symlinks it into build/ alongside nbcc_fhetch_replay), but
+          # without PATH the server can't find it and replay fails with
+          # "Could not find replay executable in PATH".
           LD_LIBRARY_PATH="$OPENFHE_LIB:$NIOBIUM_COMPILER_ROOT/build" \
+            PATH="$NIOBIUM_COMPILER_ROOT/build:$PATH" \
             "$SERVER_BIN" --port "$PORT" --bind 127.0.0.1 --exec "$COMPILER_BIN" \
             >/dev/null 2>&1 &
           echo $! > "$RUNNER_TEMP/fhetch_server.pid"
