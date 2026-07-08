@@ -40,6 +40,30 @@ inline std::string instance_name(const InstanceSize size) {
     return names[int(size)];
 }
 
+// Scan the command line for "<flag> value" or "<flag>=value" and return
+// the value, or `dflt` if the flag is absent.
+inline std::string arg_value(int argc, char* argv[], const std::string& flag,
+                             const std::string& dflt = "") {
+    for (int i = 1; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == flag && i + 1 < argc) {
+            return argv[i + 1];
+        }
+        if (a.rfind(flag + "=", 0) == 0) {
+            return a.substr(flag.size() + 1);
+        }
+    }
+    return dflt;
+}
+
+// Scan the command line for an optional "--ring_dim N" argument, as
+// forwarded by harness/run_submission.py --toy-ring-dim. Returns 0 if
+// absent, meaning "use the default ring dimension".
+inline int ring_dim_from_args(int argc, char* argv[]) {
+    auto v = arg_value(argc, argv, "--ring_dim");
+    return v.empty() ? 0 : std::stoi(v);
+}
+
 // Parameters that differ for different instance sizes
 class InstanceParams {
     const InstanceSize size;
@@ -50,8 +74,10 @@ class InstanceParams {
     fs::path rootdir; // root of the submission dir structure (see below)
 
 public:
-    // Constructor
-    explicit InstanceParams(InstanceSize _size,
+    // Constructor. _ringDim==0 means the default (65536); a non-default
+    // ring dimension is only supported for the TOY instance (fast local
+    // iteration, NOT cryptographically secure).
+    explicit InstanceParams(InstanceSize _size, int _ringDim = 0,
                             fs::path _rootdir = fs::current_path())
                             : size(_size), rootdir(_rootdir)
     {
@@ -62,7 +88,11 @@ public:
         static const int recDims[] = { 128,   128,     256,      512};
         static const int dbSizes[] = {1000, 50000, 1000000, 20000000};
 
-        ringDim = 65536;
+        ringDim = (_ringDim > 0) ? _ringDim : 65536;
+        if (ringDim != 65536 && _size != InstanceSize::TOY) {
+            throw std::invalid_argument(
+                "A non-default ring dimension is only supported for TOY");
+        }
         recordDim = recDims[int(_size)];
         dbSize    = dbSizes[int(_size)];
 

@@ -133,7 +133,21 @@ int main(int argc, char* argv[]) {
   auto size = static_cast<InstanceSize>(std::stoi(argv[1]));
   bool count_only = (argc > 2 && std::string(argv[2])=="--count_only");
 
-  InstanceParams prms(size);
+  InstanceParams prms(size, ring_dim_from_args(argc, argv));
+
+  // A reduced ring dimension is a local-simulator-only mode: it is not
+  // compatible with the Niobium hardware, so refuse any non-local target
+  // up front — before init()/is_cache_valid(), so a cached reduced-ring
+  // trace can never be dispatched to a remote replay server.
+  if (prms.getRingDim() != 65536) {
+    auto target = arg_value(argc, argv, "--target", "local");
+    if (target != "local") {
+      throw std::runtime_error(
+          "Ring dimension " + std::to_string(prms.getRingDim()) +
+          " is only supported with --target local, not '" + target + "'");
+    }
+  }
+
   constexpr double threshold = 0.8;
   auto timing_fname = prms.iodir()/"server_reported_steps.json";
   auto start_server = std::chrono::system_clock::now();
@@ -155,6 +169,11 @@ int main(int argc, char* argv[]) {
     niobium::Compiler::CacheParameters params;
     params.push_back({"wl", argv[1]});
     params.push_back({"mode", count_only ? "count" : "full"});
+    if (prms.getRingDim() != 65536) {
+      // Keep reduced-ring-dim traces separate from the default cache
+      // (default runs keep their existing cache suffix).
+      params.push_back({"ring", std::to_string(prms.getRingDim())});
+    }
     niobium::compiler().cache_parameters(params);
   }
   niobium::compiler().set_program_info(

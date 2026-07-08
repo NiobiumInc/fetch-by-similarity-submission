@@ -37,6 +37,11 @@ def main():
                              '"local" (default) replays via the in-tree fhetch_driver; any other '
                              'value (e.g. FUNC_SIM_HW) ships the recorded trace to a running '
                              'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL).')
+    parser.add_argument('--toy-ring-dim', dest='toy_ring_dim', action='store_true',
+                        help='Run with reduced ring dimension 2^11 instead of 2^16. '
+                             'Only valid for size 0 (TOY) with --target local. '
+                             'NOTE: 2^11 does not provide 128-bit security; this is '
+                             'for fast functional iteration only.')
     parser.add_argument('--opt-level', dest='opt_level', default='O3',
                         help='Optimization level (O0..O3) for the compiler-side replay. '
                              'Forwarded to server_encrypted_compute and on to the replay '
@@ -45,6 +50,11 @@ def main():
     args, _ = parser.parse_known_args()
     size = args.size
     remote_be = args.remote
+
+    if args.toy_ring_dim:
+        if size != TOY or args.target != 'local' or remote_be:
+            parser.error('--toy-ring-dim is only allowed with size 0 (TOY) '
+                         'and --target local (and without --remote)')
 
     # Use params.py to get instance parameters
     params = InstanceParams(size, args.count_only)
@@ -108,6 +118,10 @@ def main():
     cmd_args = [str(size), ]
     if args.count_only:
         cmd_args.extend(["--count_only"])
+    if args.toy_ring_dim:
+        # Forwarded to every step; the C++ binaries pick it up via
+        # ring_dim_from_args() (params.h), the harness scripts ignore it.
+        cmd_args.extend(["--ring_dim", str(2**11)])
     query_args = cmd_args      # Query steps should not get the global seed
     if args.seed is not None:  # Use seed if provided
         generic_seed = rng.integers(0,0x7fffffff)
@@ -187,6 +201,11 @@ def main():
             compute_args += ["--target", args.target]
             if args.opt_level:
                 compute_args += ["--opt-level", args.opt_level]
+            if args.toy_ring_dim:
+                # 2^11 fails the Niobium hardware compatibility checks
+                # (ring dim != 2^16, primes not = 1 mod 2^16); fine for the
+                # local functional simulator.
+                compute_args += ["--no-ring-dim-check", "--no-prime-check"]
         utils.run_exe_or_python(exec_dir, "server_encrypted_compute", *compute_args)
         utils.log_step(9, "Encrypted computation")
         utils.log_size(io_dir / "ciphertexts_download" / "results.bin" , "Encrypted results")
