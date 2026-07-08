@@ -495,7 +495,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ----
 
-Package: charset-normalizer:3.4.8
+Package: charset-normalizer:3.4.9
 
 The following copyrights and licenses were found in the source code of this package:
 
@@ -2169,7 +2169,7 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----
 
-Package: filelock:3.29.6
+Package: filelock:3.29.7
 
 The following copyrights and licenses were found in the source code of this package:
 
