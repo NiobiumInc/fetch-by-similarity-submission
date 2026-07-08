@@ -25,11 +25,8 @@ name: compiler-tests
 on:
   pull_request:
     branches: [main]
-  # PROVISIONAL: unrestricted push trigger so this fires on every push to the
-  # working branch while it's being iterated on pre-PR (also needed once, so
-  # GitHub "discovers" the workflow and workflow_dispatch stops 404ing).
-  # Narrow back to `branches: [main]` once the PR is open.
-  push: {}
+  push:
+    branches: [main]
   workflow_dispatch: {}
 
 # Least privilege: the job only needs to read the repo for checkout.
@@ -57,12 +54,10 @@ jobs:
     # doesn't hit this mismatch and is confirmed passing via the SDK. Revert
     # to FUNC_SIM_HW once niobium-compiler fixes the DIST_BUILD executor path.
     #
-    # Still on n2-highmem-48 (384GB) for now, left over from the fhetch_driver
-    # sizing — NOT yet right-sized for FHE_SIM specifically (measured peak is
-    # in the same ballpark as FUNC_SIM_HW's, ~57-59GB, since both ultimately
-    # run the same OpenFHE executor). Downsize once we have more data points;
-    # don't guess from the device spec alone.
-    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-48]
+    # Downsized from n2-highmem-48 (384GB, sized for fhetch_driver's local
+    # replay, now removed) to n2-highmem-16 (128GB) — measured peak with
+    # FHE_SIM is ~57-59GB, so this keeps ~2x headroom.
+    runs-on: [self-hosted, gcp-ephemeral, n2-highmem-16]
     timeout-minutes: 60   # OpenFHE cold-build ~15 min + FBS record/replay round trip
     env:
       SDK: /mnt/niobium-sdk/sdk   # mounted RO at boot by runner-startup.sh
