@@ -163,10 +163,10 @@ jobs:
           ( while true; do date -u +"%H:%M:%S"; free -h; echo "---"; sleep 1; done > "$RUNNER_TEMP/memlog.txt" ) &
           echo $! > "$RUNNER_TEMP/memmon.pid"
 
-      # --opt-level O1: O2+ enables CSE, which is not yet correctness-preserving
-      # for the re-recorded replay (see niobium-compiler's ci-release-full.yml
-      # FBS round-trip step). Output suppressed: replay() always dispatches
-      # over the transport now, so this touches the compiler on every run.
+      # --opt-level O3 (default): confirmed no correctness issue at O1 or O3
+      # for the re-recorded replay. Output suppressed: replay() always
+      # dispatches over the transport now, so this touches the compiler on
+      # every run.
       - name: Run submission — record (hollow) + replay over transport (PASS/FAIL only, compiler output suppressed)
         run: |
           set +x
@@ -174,7 +174,7 @@ jobs:
           rc=0
           # Output captured to a file (kept out of the public log); shipped to a
           # PRIVATE bucket only on failure (see upload step below).
-          python3 harness/run_submission.py 0 --seed 12345 --target FHE_SIM --opt-level O1 >"$RUNNER_TEMP/fbs-replay.log" 2>&1 || rc=1
+          python3 harness/run_submission.py 0 --seed 12345 --target FHE_SIM --opt-level O3 >"$RUNNER_TEMP/fbs-replay.log" 2>&1 || rc=1
           if [ $rc -eq 0 ]; then
             echo "compiler E2E: PASS"
           else
