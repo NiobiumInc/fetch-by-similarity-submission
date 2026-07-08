@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   auto size = static_cast<InstanceSize>(std::stoi(argv[1]));
-  InstanceParams prms(size);
+  InstanceParams prms(size, ring_dim_from_args(argc, argv));
 
   // Read the keys from storage
   auto pk = read_keys(prms);

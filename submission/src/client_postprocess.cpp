@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   auto size = static_cast<InstanceSize>(std::stoi(argv[1]));
-  InstanceParams prms(size);
+  InstanceParams prms(size, ring_dim_from_args(argc, argv));
 
   bool count_only = (argc > 2 && std::string(argv[2])=="--count_only");
 

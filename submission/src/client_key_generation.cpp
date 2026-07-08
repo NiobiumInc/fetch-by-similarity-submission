@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   auto size = static_cast<InstanceSize>(std::stoi(argv[1]));
-  InstanceParams prms(size);
+  InstanceParams prms(size, ring_dim_from_args(argc, argv));
 
   bool count_only = (argc > 2 && std::string(argv[2])=="--count_only");
 
@@ -70,6 +70,12 @@ KeyPair<DCRTPoly> key_gen(const InstanceParams& prms, bool count_only)
   cParams.SetKeySwitchTechnique(HYBRID);
   cParams.SetMultiplicativeDepth(23);
   cParams.SetSecurityLevel(HEStd_128_classic);
+  if (prms.getRingDim() != 65536) {
+    // Reduced ring dimension (TOY fast mode): cannot meet 128-bit security,
+    // so the dimension must be forced with the security check disabled.
+    cParams.SetSecurityLevel(HEStd_NotSet);
+    cParams.SetRingDim(prms.getRingDim());
+  }
   cParams.SetScalingTechnique(FLEXIBLEAUTO);
   cParams.SetScalingModSize(42);
   cParams.SetFirstModSize(57);
