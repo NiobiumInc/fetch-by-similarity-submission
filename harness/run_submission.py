@@ -35,8 +35,12 @@ def main():
     parser.add_argument('--target', default='local',
                         help='Replay target for server_encrypted_compute (cooperative mode). '
                              '"local" (default) replays via the in-tree fhetch_driver; any other '
-                             'value (e.g. FUNC_SIM_HW) ships the recorded trace to a running '
-                             'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL).')
+                             'value ships the recorded trace to a running '
+                             'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL). '
+                             'Use "FOG" to run on Niobium\'s stable FPGA device — the server '
+                             'resolves it to its pinned hardware id, so you never need to know '
+                             'internal device names. Other values (e.g. FUNC_SIM_HW) are '
+                             'forwarded to the server verbatim.')
     parser.add_argument('--toy-ring-dim', dest='toy_ring_dim', action='store_true',
                         help='Run with reduced ring dimension 2^11 instead of 2^16. '
                              'Only valid for size 0 (TOY) with --target local. '
