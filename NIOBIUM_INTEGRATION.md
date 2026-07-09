@@ -75,12 +75,22 @@ python harness/run_submission.py 0 --target local
 # Backend target: ships the trace to the Niobium compiler. Start a server first
 # (see scripts/start_fhetch_server.py) and select the target.
 python harness/run_submission.py 0 --target <backend>
+
+# FPGA hardware: FOG runs on Niobium's stable FPGA device. The server resolves
+# it to the currently pinned hardware id — you never name a device directly.
+python harness/run_submission.py 0 --target FOG
 ```
 
 - **`--target local` is for debugging only — it is intentionally slow and
   unoptimized** (a software FHETCH simulator running on your machine). Use it to
   validate correctness, then switch the target to run on the Niobium backend; the
   workload code does not change.
+- **`--target FOG` is the recommended way to run on FPGA hardware.** It is a
+  stable public alias: the replay server translates it to whatever FPGA device
+  is currently promoted as stable (pinned server-side), so submissions keep
+  working across device upgrades without changing any flags. Any other target
+  value is passed through to the server verbatim, for when you do need a
+  specific internal device.
 - **Cold start: the first run costs more.** On a cache miss the first run does
   **both** — it records the trace (in hollow mode: cheap on math and memory, but
   it still builds and writes the full instruction trace) **and then** replays that
