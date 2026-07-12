@@ -34,8 +34,8 @@ def main():
                         help='Run example submission in remote backend mode')
     parser.add_argument('--target', default='local',
                         help='Replay target for server_encrypted_compute (cooperative mode). '
-                             '"local" (default) replays via the in-tree fhetch_driver; any other '
-                             'value ships the recorded trace to a running '
+                             '"local" (default) replays via the in-tree fhetch_sim project '
+                             'worker; any other value ships the recorded trace to a running '
                              'nbcc_fhetch_replay_server (set NBCC_FHETCH_SERVER for a non-local URL). '
                              'Use "FOG" to run on Niobium\'s stable FPGA device — the server '
                              'resolves it to its pinned hardware id, so you never need to know '
@@ -46,6 +46,11 @@ def main():
                              'Only valid for size 0 (TOY) with --target local. '
                              'NOTE: 2^11 does not provide 128-bit security; this is '
                              'for fast functional iteration only.')
+    parser.add_argument('--use-driver', action='store_true',
+                        help='For --target local: replay via the fhetch_driver roundtrip '
+                             'harness (re-drives the trace through the recording API — an '
+                             'API-coverage check, much heavier on memory) instead of the '
+                             'default fhetch_sim project worker.')
     parser.add_argument('--opt-level', dest='opt_level', default='O3',
                         help='Optimization level (O0..O3) for the compiler-side replay. '
                              'Forwarded to server_encrypted_compute and on to the replay '
@@ -68,7 +73,7 @@ def main():
     utils.ensure_directories(params.rootdir)
 
     # Verify dependencies and build the submission, if not built already
-    utils.build_submission(params.rootdir/"scripts", remote_be)
+    utils.build_submission(params.rootdir/"scripts", remote_be, args.use_driver)
 
     # The harness scripts are in the 'harness' directory,
     # the submission code is either in submission or submission_remote
@@ -77,9 +82,10 @@ def main():
 
     # Cooperative record/replay env for server_encrypted_compute (Niobium).
     # The binary owns the explicit lifecycle; its replay() dispatches a disk
-    # replay — local via the in-tree fhetch_driver (NBCC_FHETCH_DRIVER), or for
-    # a non-local --target via the transport forwarder (NBCC_FHETCH_REPLAY) to a
-    # running server (NBCC_FHETCH_SERVER, default http://127.0.0.1:9443).
+    # replay — local via the in-tree fhetch_sim project worker (NBCC_FHETCH_SIM;
+    # fhetch_driver roundtrip harness with --use-driver), or for a non-local
+    # --target via the transport forwarder (NBCC_FHETCH_REPLAY) to a running
+    # server (NBCC_FHETCH_SERVER, default http://127.0.0.1:9443).
     if not remote_be:
         client_dir = params.rootdir / "submission" / "niobium-client"
         openfhe_lib = client_dir / "vendor" / "lib" / "openfhe" / "lib"
@@ -92,9 +98,20 @@ def main():
             prev = os.environ.get(var)
             os.environ[var] = os.pathsep.join([str(openfhe_lib)] + ([prev] if prev else []))
         if args.target == "local":
-            os.environ["NBCC_FHETCH_DRIVER"] = str(
-                client_dir / "vendor" / "niobium-fhetch" / "build" / "tests"
-                / "fhetch_driver" / "fhetch_driver")
+            if args.use_driver:
+                # Opt into the roundtrip verification harness (the library
+                # only takes this path when NBCC_FHETCH_DRIVER is set). The
+                # driver is built standalone in the fhetch submodule's own
+                # build dir by utils.build_submission.
+                os.environ["NBCC_FHETCH_DRIVER"] = str(
+                    client_dir / "vendor" / "niobium-fhetch" / "build"
+                    / "tests" / "fhetch_driver" / "fhetch_driver")
+            else:
+                # fhetch_sim is built by the client's own release build,
+                # inside the client's CMake tree.
+                os.environ.pop("NBCC_FHETCH_DRIVER", None)
+                os.environ["NBCC_FHETCH_SIM"] = str(
+                    client_dir / "build" / "vendor" / "niobium-fhetch" / "fhetch_sim")
         else:
             os.environ["NBCC_FHETCH_REPLAY"] = str(
                 client_dir / "build" / "src" / "fhetch_transport" / "nbcc_fhetch_replay")
