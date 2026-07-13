@@ -36,7 +36,7 @@ def ensure_directories(rootdir: Path):
                   f"not found in {rootdir}")
             sys.exit(1)
 
-def build_submission(script_dir: Path, remote_be: bool):
+def build_submission(script_dir: Path, remote_be: bool, use_driver: bool = False):
     """
     Build the submission, including pulling dependencies as neeed
     """
@@ -44,29 +44,31 @@ def build_submission(script_dir: Path, remote_be: bool):
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", "./submission_remote/requirements.txt"], check=True)
     else:
         # Build the niobium-client submodule, which builds its bundled
-        # OpenFHE (under vendor/lib/openfhe), the fhetch library, and
-        # the client examples. We use this OpenFHE for the submission
-        # build instead of scripts/get_openfhe.sh.
+        # OpenFHE (under vendor/lib/openfhe), the fhetch library, and the
+        # client examples — including the fhetch_sim project worker that
+        # default "--target local" replay dispatches to. We use this
+        # OpenFHE for the submission build instead of scripts/get_openfhe.sh.
         client_dir = script_dir.parent / "submission" / "niobium-client"
         subprocess.run(["make", "-C", str(client_dir), "release"], check=True)
         # CMake build of the submission itself, pointed at the OpenFHE
         # that niobium-client just installed.
         openfhe_prefix = client_dir / "vendor" / "lib" / "openfhe"
-        # Build the standalone fhetch_driver that "--target local" replay
-        # dispatches to (NBCC_FHETCH_DRIVER in run_submission.py). The
-        # niobium-client "release" build only produces libnbfhetch/fhetch_sim,
-        # not the driver test binary, so configure + build it here against the
-        # OpenFHE install niobium-client just produced (EXTERNAL_OPENFHE=1 so
-        # we don't recompile OpenFHE).
-        fhetch_dir = client_dir / "vendor" / "niobium-fhetch"
-        fhetch_env = {**os.environ,
-                      "OPENFHE_INSTALL_DIR": str(openfhe_prefix),
-                      "EXTERNAL_OPENFHE": "1"}
-        subprocess.run(["make", "-C", str(fhetch_dir), "config-fhetch-release"],
-                       check=True, env=fhetch_env)
-        subprocess.run(["cmake", "--build", str(fhetch_dir / "build"),
-                        "-j", str(os.cpu_count() or 1),
-                        "--target", "fhetch_driver"], check=True)
+        if use_driver:
+            # Build the standalone fhetch_driver that --use-driver replay
+            # dispatches to (NBCC_FHETCH_DRIVER in run_submission.py). The
+            # niobium-client "release" build only produces libnbfhetch/
+            # fhetch_sim, not the driver test binary, so configure + build it
+            # here against the OpenFHE install niobium-client just produced
+            # (EXTERNAL_OPENFHE=1 so we don't recompile OpenFHE).
+            fhetch_dir = client_dir / "vendor" / "niobium-fhetch"
+            fhetch_env = {**os.environ,
+                          "OPENFHE_INSTALL_DIR": str(openfhe_prefix),
+                          "EXTERNAL_OPENFHE": "1"}
+            subprocess.run(["make", "-C", str(fhetch_dir), "config-fhetch-release"],
+                           check=True, env=fhetch_env)
+            subprocess.run(["cmake", "--build", str(fhetch_dir / "build"),
+                            "-j", str(os.cpu_count() or 1),
+                            "--target", "fhetch_driver"], check=True)
         subprocess.run([script_dir/"build_task.sh", "./submission", str(openfhe_prefix)], check=True)
 
 
