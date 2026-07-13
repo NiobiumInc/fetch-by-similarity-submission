@@ -30,8 +30,8 @@ more than steady-state replays; see [Running it](#running-it).
 |------|--------|
 | `submission/src/server_encrypted_compute.cpp` | The one file with real integration code. Adds the explicit Niobium record/replay lifecycle around the existing FHE computation, all behind `#ifdef NIOBIUM_COMPILER`. Read its comments for the step-by-step. |
 | `submission/CMakeLists.txt` | Compiles `server_encrypted_compute` with `-DNIOBIUM_COMPILER`, against the Niobium-instrumented OpenFHE (`OPENFHE_CPROBES`), linking `libnbfhetch` + the auto-facade library. |
-| `harness/run_submission.py` | Adds `--target` (default `local`) and forwards it to the compute step; sets the replay environment (`NBCC_FHETCH_DRIVER` for local, `NBCC_FHETCH_REPLAY`/`NBCC_FHETCH_SERVER` for a backend target) + the OpenFHE library path. |
-| `scripts/start_fhetch_server.py` | Standalone helper to start the replay **server** for a non-local target, wired to an external compiler checkout. (Temporary — meant to move into the compiler repo later.) |
+| `harness/run_submission.py` | Adds `--target` (default `local`) and forwards it to the compute step; sets the replay environment (`NBCC_FHETCH_DRIVER` for local, or `NBCC_FHETCH_REPLAY` — the transport forwarder — for a backend target) + the OpenFHE library path. For a backend target it *reads* `NBCC_FHETCH_SERVER` (the worker URL) but never sets it — `scripts/fog submit` supplies that. |
+| `submission/niobium-client/scripts/fog` (client SDK) | How a non-local / FOG run reaches a backend: `fog submit` requests a worker from the FOG API and runs your harness against it, so there's no separate replay server to start (see [Running it](#running-it)). An earlier `scripts/start_fhetch_server.py` helper has been removed. |
 | `submission/niobium-client` | The Niobium client SDK (git submodule). The integration uses its cooperative auto-tagging mode. |
 | `submission/include/params.h`, `submission/src/client_key_generation.cpp` | The `TOY` size now uses the full ring dimension (`ringDim = 65536`) with `HEStd_128_classic` security, the same crypto parameters as all other sizes — instead of its previous reduced ring (`ringDim = 1024`, no security). This keeps recorded traces parameter-compatible across sizes while still using toy-scale data (1000 records, 128-dim) for quick checks. |
 
@@ -68,45 +68,88 @@ inside the recording gate** (a cache hit runs zero ops); hollow mode must be
 
 ## Running it
 
+There are two ways to run, and both use the same harness and the same workload
+code — only `--target` differs: **locally** against an in-tree simulator (for
+debugging, no account), and on the **managed FOG** against Niobium's FPGA (the
+customer path).
+
+### One-time setup
+
+1. **macOS transport TLS.** Before building, `export
+   OPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3` (Intel Macs:
+   `/usr/local/opt/openssl@3`). Without it the client's HTTPS transport builds
+   **without TLS** and the FOG upload fails; confirm `TLS enabled (OpenSSL 3.x)`
+   in the build's config log.
+2. **A fog-capable client.** This repo's committed submodule pin predates the
+   `scripts/fog` CLI, so bump it to `main` once after cloning:
+   ```bash
+   cd submission/niobium-client && git fetch origin main && git checkout origin/main
+   make sync                       # nested openfhe / fhetch / haze / json
+   cd ../..
+   ```
+   Confirm `submission/niobium-client/scripts/fog` now exists. (Only needed for a
+   FOG run; a `--target local` run works with the pinned client.)
+3. **FOG access** (FOG runs only). Get an account, then point the CLI at the
+   **beta** endpoint and log in:
+   - `~/.fog/config` → `api_url = https://api.beta.niobium.co`. The CLI defaults
+     to prod (`api.niobium.co`), which **404s on `/jobs/`** — beta is required.
+   - `submission/niobium-client/scripts/fog login` — stores your API token.
+   - macOS: `pip3 install certifi` — the python CLI needs a CA bundle for TLS.
+
+### Local — in-tree simulator (debugging, no account)
 ```bash
-# Local (default): replays via the in-tree fhetch_driver simulator.
 python harness/run_submission.py 0 --target local
-
-# Backend target: ships the trace to the Niobium compiler. Start a server first
-# (see scripts/start_fhetch_server.py) and select the target.
-python harness/run_submission.py 0 --target <backend>
-
-# FPGA hardware: FOG runs on Niobium's stable FPGA device. The server resolves
-# it to the currently pinned hardware id — you never name a device directly.
-python harness/run_submission.py 0 --target FOG
 ```
+`--target local` replays via the in-tree `fhetch_driver` — intentionally slow and
+unoptimized, but it validates correctness with no account and no network. The
+workload code is identical when you switch to the FOG.
 
-- **`--target local` is for debugging only — it is intentionally slow and
-  unoptimized** (a software FHETCH simulator running on your machine). Use it to
-  validate correctness, then switch the target to run on the Niobium backend; the
-  workload code does not change.
-- **`--target FOG` is the recommended way to run on FPGA hardware.** It is a
-  stable public alias: the replay server translates it to whatever FPGA device
-  is currently promoted as stable (pinned server-side), so submissions keep
-  working across device upgrades without changing any flags. Any other target
-  value is passed through to the server verbatim, for when you do need a
-  specific internal device.
-- **Cold start: the first run costs more.** On a cache miss the first run does
-  **both** — it records the trace (in hollow mode: cheap on math and memory, but
-  it still builds and writes the full instruction trace) **and then** replays that
-  trace to produce the result. Later runs hit the cache and **only replay**
-  (Niobium refreshes the changed keys/inputs automatically). So expect the first
-  run after a fresh record — or after changing the computation or crypto
-  parameters, which forces a re-record — to be noticeably slower than the
-  steady-state replays that follow.
-- **Record once, replay with new keys:** keep the recorded trace directory
-  between runs; delete it to force a fresh record (and thus another cold start)
-  after changing the computation or crypto parameters.
+### Managed FOG — replay on Niobium's FPGA (the customer path)
+```bash
+export OPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3      # macOS: transport TLS
+submission/niobium-client/scripts/fog submit \
+    python harness/run_submission.py 0 --target FOG --opt-level O3
+```
+`scripts/fog submit` **wraps** the harness: it POSTs a job to the FOG API
+(`{mode, target}`), long-polls until a worker is assigned, exports the worker URL
++ token (`NBCC_FHETCH_SERVER` / `NBCC_FHETCH_TOKEN`), then `exec`s your harness.
+The harness only ever sets `NBCC_FHETCH_REPLAY` (the transport forwarder), so the
+assigned worker flows straight through to the transport client. A **single
+invocation records the trace locally, then replays it on the FOG** — there is no
+separate record step.
+
+`--target FOG` does double duty: the FOG API reads it to select the pinned stable
+FPGA (you never name a device), and the harness reads it as "non-local → use the
+forwarder." Any other non-local value is shipped to whatever `NBCC_FHETCH_SERVER`
+points at (default `http://127.0.0.1:9443`), for advanced self-hosting.
+
+> **`--opt-level O3` is mandatory** for the FPGA and is the harness default: at
+> `O0` the replay skips Memory Squash and overflows the slot allocator. It's
+> forwarded end-to-end to the backend.
+
+### Notes on the FOG run
+
+- **Cold start — the first run costs more.** On a cache miss the first run does
+  **both**: it records the trace (hollow mode — cheap on math/memory, but it still
+  builds and writes the full instruction trace) **and then** replays it to produce
+  the result. Later runs hit the cache and **only replay** (Niobium refreshes the
+  changed keys/inputs automatically). Expect the first run — or the first after
+  changing the computation or crypto parameters, which forces a re-record — to be
+  noticeably slower.
+- **Record once, replay with new keys.** Keep the recorded trace directory between
+  runs; delete it to force a fresh record after changing the computation or crypto
+  parameters.
+- **A FOG run is upload-bound.** It is dominated by the **HTTPS upload** of the
+  tagged keys + ciphertexts, not the FPGA compute. How long that takes depends on
+  your payload size and uplink, so measure it on your own connection rather than
+  assuming a figure — even the toy size isn't instant. A better-connected host (or
+  a smaller instance) is the main lever.
 
 ## Build dependency
 
 `scripts/build_task.sh` / the harness build first builds the niobium-client
-submodule (its instrumented OpenFHE + `libnbfhetch` + auto-facade), then builds
-this workload against it. A backend (`--target`) run additionally needs a
-reachable Niobium compiler (`nbcc_fhetch_replay`); `start_fhetch_server.py`
-wires one up.
+submodule (its instrumented OpenFHE + `libnbfhetch` + auto-facade + transport),
+then builds this workload against it. A `--target local` run needs only that. A
+**`--target FOG`** run additionally needs a fog-capable client (the bump step in
+[Running it](#running-it)) and an approved FOG account — the FOG worker provides
+the backend, so there is no server for you to start.
