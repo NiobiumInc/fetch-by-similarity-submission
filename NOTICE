@@ -2,9 +2,9 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 ============================================================
 
 Project: fetch-by-similarity-submission
-Generated: 2026-07-28
+Generated: 2026-08-06
 Tool: SCANOSS (snippet detection with License dataset)
-Components: 83
+Components: 85
 
 This file lists all third-party software components detected
 in this repository, along with their licenses and copyright
@@ -38,7 +38,7 @@ LICENSE SUMMARY
   Artistic-1.0-Perl: 1 component(s)
   Artistic-1.0-Perl OR GPL-1.0-or-later: 1 component(s)
   Artistic-2.0: 1 component(s)
-  BSD-2-Clause: 7 component(s)
+  BSD-2-Clause: 8 component(s)
   BSD-2-Clause AND BSD-3-Clause: 1 component(s)
   BSD-2-Clause AND LGPL-2.1-only: 1 component(s)
   BSD-2-Clause-Darwin: 1 component(s)
@@ -106,7 +106,7 @@ LICENSE SUMMARY
   GPL-2.0-or-later [COPYLEFT]: 2 component(s)
   GPL-3.0-linking-exception: 1 component(s)
   GPL-3.0-linking-source-exception: 1 component(s)
-  GPL-3.0-only [COPYLEFT]: 4 component(s)
+  GPL-3.0-only [COPYLEFT]: 5 component(s)
   GPL-3.0-only AND BSD-3-Clause AND GPL-1.0-or-later AND GPL-2.0-only: 1 component(s)
   GPL-3.0-only AND GPL-1.0-or-later AND BSD-3-Clause: 1 component(s)
   GPL-3.0-or-later AND FSFAP: 1 component(s)
@@ -285,6 +285,7 @@ COMPONENT ATTRIBUTIONS
     Copyright (C) 2015 THL A29 Limited; a Tencent company; and Milo Yip-> All rights reserved->
     Copyright (c) 2006-2013 Alexander Chemeris
     Copyright (c) 2006; 2007 Marcin Kalicinski
+    Copyright (c) 2013; Randolph Voorhies; Shane Grant
     Copyright (c) 2014; 2017; Randolph Voorhies; Shane Grant; Juan Pedro
     Copyright (c) 2014; Randolph Voorhies; Shane Grant
     Copyright (c) 2015; Kyle Fleming
@@ -1015,6 +1016,16 @@ COMPONENT ATTRIBUTIONS
     Copyright 2016; Samuel Neves <sneves@dei.uc.pt>
   License: BSD-2-Clause
 
+  openfhe-python
+  Version: v1.4.2.0
+  Source: https://github.com/openfheorg/openfhe-python
+  PURL: pkg:github/openfheorg/openfhe-python
+  Copyright:
+    Copyright 2022 ; OpenFHE
+    Copyright  c) 2023-2025  Duality Technologies Inc. and other contributors
+    Copyright (c) 2023-2025; Duality Technologies Inc. and other contributors
+  License: BSD-2-Clause
+
   Otus_IP_filter
   Version: 3
   Source: https://github.com/Daniil199820/Otus_IP_filter
@@ -1079,6 +1090,15 @@ COMPONENT ATTRIBUTIONS
     Copyright 2007; Google Inc.
     Copyright 2018; Google Inc.
   License: BSD-3-Clause
+
+  Pyfhel
+  Version: 7148501
+  Source: https://github.com/ibarrond/Pyfhel
+  PURL: pkg:github/ibarrond/pyfhel
+  Copyright:
+    (C) 2007 Free Software Foundation; Inc. <http:  fsf.org >
+    Copyright copyright owner or entity authorized by
+  License: GPL-3.0-only
 
   rayx
   Version: v0.19.4
