@@ -2,7 +2,7 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 ============================================================
 
 Project: fetch-by-similarity-submission
-Generated: 2026-08-06
+Generated: 2026-08-16
 Tool: SCANOSS (snippet detection with License dataset)
 Components: 85
 
@@ -996,7 +996,7 @@ COMPONENT ATTRIBUTIONS
   License: MIT
 
   openfhe-development
-  Version: old-dev-v1.1.0
+  Version: cs-fix
   Source: https://github.com/openfheorg/openfhe-development
   PURL: pkg:github/openfheorg/openfhe-development
   Copyright:
