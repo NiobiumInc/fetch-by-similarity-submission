@@ -2,7 +2,7 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 ============================================================
 
 Project: fetch-by-similarity-submission
-Generated: 2026-09-05
+Generated: 2026-09-13
 Tool: SCANOSS (snippet detection with License dataset)
 Components: 89
 
@@ -223,9 +223,9 @@ COMPONENT ATTRIBUTIONS
   Source: https://github.com/google/benchmark
   PURL: pkg:github/google/benchmark
   Copyright:
+    Copyright 2015 Google Inc. All rights reserved
     Copyright 2021 Google Inc. All rights reserved
     Copyright 2015 Google Inc.
-    Copyright 2015 Google Inc. All rights reserved.
     Copyright 2016 Ismael Jimenez Martinez
     Copyright 2016 Ismael Jimenez Martinez. All rights reserved.
     Copyright 2017 Roman Lebedev. All rights reserved.
