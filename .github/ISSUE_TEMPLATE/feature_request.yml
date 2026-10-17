@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a new capability or an improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. For anything substantial, agreeing on the
+        approach here first saves everyone time.
+
+        **Want to build it yourself?** Say so below. Code is contributed through
+        a pull request, not pasted into an issue. See
+        [CONTRIBUTING.md](https://github.com/NiobiumInc/fetch-by-similarity-submission/blob/HEAD/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you would like it to work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to contribute this?
+      options:
+        - "No, just suggesting it"
+        - "Yes, I would like to open a pull request"
+        - "Maybe, with some guidance"
+    validations:
+      required: true
