@@ -2,7 +2,7 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 ============================================================
 
 Project: fetch-by-similarity-submission
-Generated: 2026-10-05
+Generated: 2026-10-17
 Tool: SCANOSS (snippet detection with License dataset)
 Components: 92
 
@@ -19,7 +19,7 @@ LICENSE SUMMARY
   AFL-2.1: 1 component(s)
   AFL-3.0 AND GPL-2.0-only AND AFL-2.1 AND GPL-2.0-or-later AND MIT AND GPL-1.0-or-later: 1 component(s)
   AGPL-3.0-only [COPYLEFT]: 1 component(s)
-  Apache-2.0: 21 component(s)
+  Apache-2.0: 20 component(s)
   Apache-2.0 AND Apache-2.0 AND OpenSSL: 1 component(s)
   Apache-2.0 WITH LLVM-exception: 3 component(s)
   Apache-2.0 WITH LLVM-exception AND NCSA: 2 component(s)
@@ -332,7 +332,7 @@ COMPONENT ATTRIBUTIONS
 
   codspeed-cpp
   Version: v1.0.0
-  Source: https://github.com/CodSpeedHQ/codspeed-cpp
+  Source: https://github.com/codspeedhq/codspeed-cpp
   PURL: pkg:github/codspeedhq/codspeed-cpp
   Copyright:
     Copyright 2025 CodSpeed Technology SAS and contributors
@@ -436,10 +436,11 @@ COMPONENT ATTRIBUTIONS
   License: BSD-3-Clause
 
   doctest
-  Version: 2.4.7
+  Version: v2.4.11
   Source: https://github.com/doctest/doctest
   PURL: pkg:github/doctest/doctest
   Copyright:
+    Copyright 2016-2023 Viktor Kirilov
     Copyright (c) 2016-2021 Viktor Kirilov
   License: MIT
 
@@ -666,8 +667,10 @@ COMPONENT ATTRIBUTIONS
   Copyright:
     Copyright 2005 ; Google Inc.
     Copyright 2008 ; Google Inc.
+    Copyright 2012-2016 Free Software Foundation Inc
     Copyright 2014 gperftools Contributors
     Copyright 2023 gperftools Contributors
+    Copyright 2026 gperftools Contributors
     Copyright (c) 2000; Google Inc.
     Copyright (c) 2003; Google Inc.
     Copyright (c) 2004; Google Inc.
@@ -796,7 +799,7 @@ COMPONENT ATTRIBUTIONS
   PURL: pkg:github/philippd3/lab06
   Copyright:
     Copyright 2007; Google Inc.
-  License: Apache-2.0, BSD-3-Clause
+  License: BSD-3-Clause
 
   libbacktrace
   Version: 86885d1
