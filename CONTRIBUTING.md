@@ -11,9 +11,9 @@ projects and all of your future contributions.
 **[Review and accept the Niobium CLA](https://cla.niobium.co)**
 
 You sign in with GitHub, so your acceptance is tied to your account. When you
-open a pull request, a check named `cla/niobium` reports whether everyone
-who authored a commit on it is covered. If someone isn't, the check leaves a
-comment with a link.
+open a pull request, a check named `cla/niobium` reports whether the
+account that opened it is covered. If it isn't, the check leaves a comment with
+a link.
 
 **Contributing on behalf of a company?** If your contributions are or will be
 owned by your employer, your employer must complete the agreement, and only
@@ -21,19 +21,14 @@ someone authorised to bind the company may do so. Choose "Entity" on the signing
 page. Entity agreements are reviewed by a person before they take effect, so
 allow a little time for that.
 
-### If the CLA check fails on a commit you did author
+### Who the check looks at
 
-That almost always means the commit's author email isn't associated with your
-GitHub account. Add it at [github.com/settings/emails](https://github.com/settings/emails)
-(it can stay private), or re-commit with an address GitHub already knows:
+Only the GitHub account that opens the pull request. Commit authors and
+`Co-authored-by` lines are not checked: whoever opens the pull request is
+submitting it, and takes responsibility for what it contains.
 
-```bash
-git config user.email "you@example.com"
-git commit --amend --reset-author --no-edit
-git push --force-with-lease
-```
-
-Then comment `recheck` on the pull request.
+If the check is still red after you have signed, comment `recheck` on the pull
+request.
 
 ## Before you open a pull request
 
