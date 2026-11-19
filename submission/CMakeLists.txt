@@ -110,14 +110,26 @@ find_library(NB_AUTOFACADE_LIB
     REQUIRED)
 message(STATUS "Found niobium_client_autofacade: ${NB_AUTOFACADE_LIB}")
 
-# yaml-cpp is a transitive PRIVATE dep of the autofacade. Reuse the copy
-# niobium-client built via FetchContent.
-find_library(YAML_CPP_LIB
-    NAMES yaml-cpp
-    PATHS "${NIOBIUM_CLIENT_DIR}/build/_deps/yaml_cpp-build"
-    NO_DEFAULT_PATH
-    REQUIRED)
-message(STATUS "Found yaml-cpp: ${YAML_CPP_LIB}")
+# yaml-cpp is a transitive PRIVATE dep of the autofacade. niobium-client's
+# own build (vendor/niobium-client/src/auto_facade/CMakeLists.txt) tries
+# find_package(yaml-cpp QUIET) first and only vendors a copy via
+# FetchContent when no system install is found -- so on a machine that
+# already has yaml-cpp (apt, conda, ...), niobium-client links against
+# THAT, the FetchContent build dir is never created, and a find_library()
+# hardcoded to that path finds nothing even though yaml-cpp is right there.
+# Mirror the same two-step lookup instead of assuming one outcome.
+find_package(yaml-cpp QUIET)
+if(yaml-cpp_FOUND)
+    set(YAML_CPP_LIB yaml-cpp)
+    message(STATUS "Found yaml-cpp (system package): ${YAML_CPP_LIB}")
+else()
+    find_library(YAML_CPP_LIB
+        NAMES yaml-cpp
+        PATHS "${NIOBIUM_CLIENT_DIR}/build/_deps/yaml_cpp-build"
+        NO_DEFAULT_PATH
+        REQUIRED)
+    message(STATUS "Found yaml-cpp (vendored via FetchContent): ${YAML_CPP_LIB}")
+endif()
 
 # --------------------------------------------------------------------
 # 4.  Each *.cpp file becomes its own executable.
